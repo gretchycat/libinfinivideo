@@ -18,4 +18,12 @@ class VideoMetadataTest {
         assertEquals("00:00", VideoMetadata.formatTime(-1)); assertEquals("01:01", VideoMetadata.formatTime(61000))
         assertEquals("1:01:01", VideoMetadata.formatTime(3661000))
     }
+    @Test fun originalResourceSurvivesFileAdaptationAndDecodeMetadata() {
+        val input = VideoMetadata.fileInput(StreamMetadata(provenance = Provenance(source = "file:/cache/video")), "sftp://connection/video")
+        val output = VideoMetadata.presented(input, 1920, 1080, 1000)
+        assertEquals("sftp://connection/video", output.provenance.source)
+        assertEquals("file:/cache/video", input.attributes["localFile"])
+        assertEquals(listOf("file.adapt", "video.platform.decode"), output.provenance.transformations)
+    }
+
 }

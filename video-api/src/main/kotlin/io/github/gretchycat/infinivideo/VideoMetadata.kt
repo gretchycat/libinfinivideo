@@ -7,6 +7,13 @@ object VideoMetadata {
     val descriptor = ProcessorDescriptor("video.android.platform",
         listOf(PortDescriptor("encoded", setOf(DataKind.BYTES))),
         listOf(PortDescriptor("frames", setOf(DataKind.VIDEO_FRAME))), options = setOf("speed"))
+    /** Host supplies logical origin separately from the borrowed/staged local file view. */
+    fun fileInput(input: StreamMetadata, originalSource: String?): StreamMetadata =
+        if (originalSource == null) input else input.copy(
+            provenance = input.provenance.copy(source = originalSource,
+                transformations = input.provenance.transformations + "file.adapt"),
+            attributes = input.attributes + input.provenance.source?.let { mapOf("localFile" to it) }.orEmpty())
+
     /** Negotiated presentation metadata; dimensions/duration remain unknown until the backend reports them. */
     fun presented(input: StreamMetadata, width: Int?, height: Int?, durationMs: Long?): StreamMetadata =
         StreamMetadata(ContentType(DataKind.VIDEO_FRAME, format = "platform-surface"), name = input.name,

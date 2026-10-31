@@ -13,3 +13,5 @@ Original-code licensing is pending owner selection; see LICENSE.md. No original 
 ## Current boundary
 
 video-api provides typed presentation metadata/descriptors and the existing control time formatter. video-android wraps the existing VideoView/MediaPlayer source binding and reports negotiated surface dimensions/duration without converting frames to bytes. The host retains listeners, Android surface, controls, focus/lifecycle and the staged-file lease. This source tree never used libVLC; no backend was replaced. Decoding remains Android's platform implementation. Standalone video decoding on desktop/iOS and a full demux/frame API are follow-up, not newly implemented capabilities. The actual viewer uses this backend adapter.
+
+The host supplies the original resource URI when binding a local file view. Input/output provenance retains that logical origin and the file adaptation/decode steps; the physical localFile is separate metadata. This does not assert that the host copied a borrowed original.

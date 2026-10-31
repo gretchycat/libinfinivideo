@@ -7,8 +7,8 @@ import java.io.File
 
 /** Existing VideoView/MediaPlayer backend. Host retains its surface, listeners and staged-file lease. */
 object AndroidVideoBackend {
-    fun bind(view: VideoView, file: File): StreamMetadata {
-        val input = FileSourceResource(file).metadata
+    fun bind(view: VideoView, file: File, originalSource: String? = null): StreamMetadata {
+        val input = VideoMetadata.fileInput(FileSourceResource(file).metadata, originalSource)
         view.setVideoPath(file.absolutePath)
         return input
     }
