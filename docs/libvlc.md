@@ -42,7 +42,7 @@ retains Sound's existing runtime; the native runner extracts the actual packaged
 libraries and loads both libinfiniopenmpt and libvlc/libvlcjni in one process.
 Re-run that check whenever the dependency, native toolchain or packaging order
 changes. The checked video-only host selects libVLC's runtime instead and passes
-the same seven video runtime groups independently. From the containing workspace:
+the same eight video runtime groups independently. From the containing workspace:
 
 ```
 python scripts/verify-libvlc-runtime.py
@@ -85,3 +85,8 @@ The headless streaming checks use a dummy audio clock and disable video renderin
 so they can verify native demux/decoder progress without bootstrapping Android
 widgets/fonts. They do not establish rendered video pixels, subtitle pixels,
 audible audio or PiP. Those require handset acceptance.
+
+The eighth video group checks original RV20/AC-3 RealMedia metadata, actual video
+and audio decoder counters from local/common-source inputs, invalid-input
+rejection and reopening a valid movie. The host routes `.rm`/`.rmvb` here; it
+must never replace unsupported audio with a synthesized test signal.
