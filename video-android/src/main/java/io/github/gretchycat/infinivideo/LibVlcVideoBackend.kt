@@ -1,6 +1,7 @@
 package io.github.gretchycat.infinivideo
 
 import android.content.Context
+import android.net.Uri
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
@@ -9,6 +10,8 @@ import android.os.Looper
 import android.view.View
 import io.github.gretchycat.infinistream.FileSourceResource
 import io.github.gretchycat.infinistream.StreamMetadata
+import io.github.gretchycat.infinistream.SourceResource
+import org.videolan.libvlc.Media
 import org.videolan.libvlc.MediaPlayer
 import org.videolan.libvlc.util.VLCVideoLayout
 import java.io.File
@@ -19,6 +22,11 @@ class LibVlcVideoBackend(context: Context) : VideoPlayback {
     val view: View get() = layout
     private val engine = LibVlcMedia.engine(context.applicationContext)
     private var player: MediaPlayer? = null
+    private var stream: VideoStreamServer? = null
+    private var lastBytesRead = 0L
+    private var lastReplayedBytes = 0L
+    val streamBytesRead get() = stream?.bytesRead ?: lastBytesRead
+    val replayedBytes get() = stream?.replayedBytes ?: lastReplayedBytes
     private var closed = false
     private var ready = false
     private var ended = false
@@ -70,6 +78,22 @@ class LibVlcVideoBackend(context: Context) : VideoPlayback {
         check(!closed) { "Video backend is closed" }
         stop()
         inputMetadata = VideoMetadata.stagedInput(FileSourceResource(file).metadata, sourceMetadata)
+        startSession(autoPlay) { LibVlcMedia.open(engine, file) }
+    }
+
+    /** Consume a common source on demand; no eager file copy or application disk cache. */
+    fun open(resource: SourceResource, autoPlay: Boolean = true) {
+        check(!closed) { "Video backend is closed" }
+        stop()
+        val transport = VideoStreamServer(resource)
+        stream = transport
+        inputMetadata = transport.metadata
+        startSession(autoPlay) { LibVlcMedia.open(engine, Uri.parse(transport.url)) }
+    }
+
+    private fun startSession(autoPlay: Boolean, mediaFactory: () -> Media) {
+        lastBytesRead = 0
+        lastReplayedBytes = 0
         ready = false
         ended = false
         outputMetadata = VideoMetadata.libVlcPresented(inputMetadata, null, null, null, false)
@@ -102,7 +126,7 @@ class LibVlcVideoBackend(context: Context) : VideoPlayback {
                     }
                 }
             }
-            val media = LibVlcMedia.open(engine, file)
+            val media = mediaFactory()
             try { current.media = media } finally { media.release() }
             if (autoPlay) play()
         } catch (error: Throwable) {
@@ -165,13 +189,20 @@ class LibVlcVideoBackend(context: Context) : VideoPlayback {
 
     override fun stop() {
         val old = player
+        val transport = stream
+        stream = null
         player = null // Reject already queued callbacks before the native stop/release.
         wantsPlayback = false
         resumeAfterFocus = false
         try {
-            if (old != null) {
-                old.setEventListener(null)
-                try { old.stop() } finally { try { old.detachViews() } finally { old.release() } }
+            try {
+                transport?.close()
+                if (transport != null) { lastBytesRead = transport.bytesRead; lastReplayedBytes = transport.replayedBytes }
+            } finally {
+                if (old != null) {
+                    old.setEventListener(null)
+                    try { old.stop() } finally { try { old.detachViews() } finally { old.release() } }
+                }
             }
         } finally {
             audio.abandonAudioFocusRequest(focus)

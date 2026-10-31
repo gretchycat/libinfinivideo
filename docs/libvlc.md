@@ -55,10 +55,33 @@ successful process exit.
 
 ## Source and output boundaries
 
-The Java binding accepts paths/URIs/file descriptors, not arbitrary Java
-ByteSource callbacks. This checkpoint borrows the host's existing local/staged
-file, with common source metadata. Direct remote/provider positional reads need
-an explicit future transport adapter; credentials and archive URIs are not sent
-to libVLC. Sibling subtitle discovery is disabled; embedded subtitles remain
-available. Selecting external companion resources requires an explicit resource
-contract and is follow-up work.
+The Android binding accepts paths/URIs/file descriptors. InfiniVideo adapts common
+SourceResource inputs through its loopback HTTP range transport; provider
+credentials and archive URIs never go to the native engine. The transport borrows
+the resource, owns its opened handles, uses bounded 64 KiB reads and nonblocking
+socket writes, and closes before the host releases the provider owner. Native
+positional sources preserve random access. Sequential/reopenable sources with a
+known length replay a prefix for ranges and report that cost; unknown totals use
+chunked sequential HTTP. No application video-file staging is performed.
+
+Inherited container implementations can still require caches/extraction for
+formats or enclosing resources they cannot stream. Compressed sequential seeking
+can cost work proportional to the skipped prefix. Native platform/format limits
+still apply; metadata during unknown-length preparsing can remain provisional
+until playback discovers tracks. Streaming is not a new universal format claim.
+
+Sibling subtitle discovery is disabled; embedded subtitles remain available.
+External companions need an explicit related-resource contract. Actual frame
+presentation uses native surfaces rather than CPU byte serialization.
+
+Run the native streaming checks from the containing workspace with:
+
+```
+python scripts/verify-libvlc-runtime.py --streaming
+python scripts/verify-libvlc-runtime.py --streaming --apk viewer-host/build/outputs/apk/debug/viewer-host-debug.apk --label host
+```
+
+The headless streaming checks use a dummy audio clock and disable video rendering
+so they can verify native demux/decoder progress without bootstrapping Android
+widgets/fonts. They do not establish rendered video pixels, subtitle pixels,
+audible audio or PiP. Those require handset acceptance.

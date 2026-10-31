@@ -28,12 +28,27 @@ presentation surface, dimensions/duration when known, backend and negotiated
 seekability. It does not advertise CPU frame bytes or positional frame access.
 
 `video-android` provides `LibVlcVideoBackend(context)`. Add its `view` to the host
-layout and call `open(file, sourceMetadata, autoPlay)`. All presentation/control
+layout and call `open(file, sourceMetadata, autoPlay)` for local files or
+`open(resource, autoPlay)` for common sources. All presentation/control
 calls are on the Android main thread. The file is a borrowed local view of a
 common source, including a cached remote/archive resource. Input capabilities and
 length describe that actual file; provenance/name/warnings retain logical source
 identity. Stop/close the backend **before** closing the host's staging lease.
 The backend does not delete or copy its input file.
+
+Common resources use `VideoStreamServer`, a library-owned loopback HTTP adapter
+for native libVLC. It opens source handles only when requested, serves 64 KiB
+chunks, and uses actual positional reads for byte ranges. Reopenable sequential
+resources with a known total can seek by replaying a prefix without a disk copy;
+that cost is explicit in input metadata. Unknown totals remain sequential and
+use chunked HTTP. A selector handles socket backpressure, with two source workers
+and at most eight connections; paused responses cannot occupy source workers.
+The URL binds only to loopback and uses a per-session random token. Stop closes
+sockets/borrowed handles before the caller closes its resource owner. Logical
+identity, type, warnings and actual source capabilities remain metadata.
+Local/network startup buffers are 300 ms, overriding the binding's hardware
+setup default of 1500 ms. The host starts the selected item while it discovers
+folder siblings independently.
 
 The adapter supports fit, aspect-preserving fill, 16:9/4:3, playback speed,
 play/pause, indexed seeking, embedded subtitle presentation, audio focus and
@@ -45,9 +60,12 @@ frames through byte arrays.
 
 `AndroidVideoBackend` and prior metadata/time APIs remain compatibility adapters;
 the current host uses libVLC. Existing clients can migrate incrementally. Desktop
-and iOS adapters, a general demux/frame API and direct arbitrary Stream read
-callbacks remain future work. Remote/archive inputs currently keep explicit
-host staging; this checkpoint does not claim on-demand network ranges.
+and iOS adapters and a general demux/frame API remain future work. The app now
+uses common positional or sequential resources for remote/archive inputs.
+Vault's non-extracting slice API avoids its legacy whole-entry fallback; stored
+ZIP/filesystem slices remain positional and compressed ZIP streams can replay.
+Other inherited container adapters may still cache enclosing resources or
+require extraction; their format-specific limits remain explicit follow-up.
 
 ## Validation
 
@@ -55,6 +73,9 @@ The containing workspace records the frozen regression baseline and native
 runtime checks in docs/infinistream-migration.md. Portable tests cover metadata,
 source adaptation, speed/seek limits and long-duration labels. The native helper
 loads libVLC and Sound against the exact packaged shared C++ runtime, probes the
-synthetic MP4/WebM/MKV fixtures and checks software decode and long seeks without
-creating widgets. Actual surfaces, sound, subtitles, PiP and remote input remain
+synthetic MP4/WebM/MKV fixtures and checks decoder counters and long seeks
+without creating widgets. The streaming mode uses a dummy audio clock, disables
+video rendering, and tests actual MP4 demux/seek/decoder progress over source
+ranges. It also checks a 512 MiB virtual movie without whole-file reads, compressed
+ZIP replay, unknown-length inputs and native container slices. Actual surfaces, sound, subtitles, PiP and remote input remain
 handset acceptance checks.

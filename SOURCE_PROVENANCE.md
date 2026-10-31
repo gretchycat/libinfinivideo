@@ -14,3 +14,10 @@ its sources, digest, notices and optional source-built AAR override are recorded
 in dependencies.json and docs/libvlc.md. No upstream codec code or binary is
 copied into this repository. The original platform adapter remains for existing
 clients while the host selects the new backend.
+
+## 2026-10-31 — common-source streaming
+
+`VideoStreamServer` and its transport tests are original integration code. They
+translate libinfinistream resources into bounded native HTTP reads without
+copying upstream libVLC code or introducing a storage-provider dependency.
+The Android backend owns transport/native sessions; the host owns source leases.
