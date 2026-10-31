@@ -24,7 +24,27 @@ object VideoMetadata {
                 durationMs?.takeIf { it >= 0 }?.let { put("durationMs", it.toString()) }
                 put("storage", "platform-surface")
             })
-    fun formatTime(ms: Int): String {
+    val libVlcDescriptor = ProcessorDescriptor("video.android.libvlc",
+        listOf(PortDescriptor("encoded", setOf(DataKind.BYTES))),
+        listOf(PortDescriptor("frames", setOf(DataKind.VIDEO_FRAME))),
+        options = setOf("speed", "aspect"))
+
+    /** Actual local access capabilities/length, logical origin and warnings from the source. */
+    fun stagedInput(file: StreamMetadata, source: StreamMetadata): StreamMetadata = file.copy(
+        content = source.content, name = source.name ?: file.name,
+        provenance = source.provenance.copy(transformations = source.provenance.transformations + "file.adapt"),
+        warnings = (source.warnings + file.warnings).distinct(),
+        attributes = source.attributes + file.attributes + file.provenance.source?.let { mapOf("localFile" to it) }.orEmpty())
+
+    fun libVlcPresented(input: StreamMetadata, width: Int?, height: Int?, durationMs: Long?, seekable: Boolean): StreamMetadata =
+        presented(input, width, height, durationMs).let { it.copy(
+            warnings = input.warnings,
+            provenance = input.provenance.copy(transformations = input.provenance.transformations + "video.libvlc.decode"),
+            attributes = it.attributes + mapOf("backend" to "libvlc", "seekable" to seekable.toString())) }
+
+    fun formatTime(ms: Int): String = formatTime(ms.toLong())
+
+    fun formatTime(ms: Long): String {
         val totalSecs = (ms / 1000).coerceAtLeast(0)
         val hours = totalSecs / 3600; val mins = (totalSecs % 3600) / 60; val secs = totalSecs % 60
         return if (hours > 0) String.format(Locale.US, "%d:%02d:%02d", hours, mins, secs)

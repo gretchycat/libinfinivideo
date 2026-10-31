@@ -4,3 +4,13 @@ Original implementations and history: [gretchycat/infinifolder at 9233495](https
 
 | Original path | New path | SHA-256 before move |
 | --- | --- | --- |
+
+## 2026-10-31 — requested libVLC backend
+
+The owner explicitly requested libVLC in place of Android platform video decoding.
+The new playback contract, metadata adapters and Android presentation backend are
+original integration code. VideoLAN's pinned Maven dependency supplies libVLC;
+its sources, digest, notices and optional source-built AAR override are recorded
+in dependencies.json and docs/libvlc.md. No upstream codec code or binary is
+copied into this repository. The original platform adapter remains for existing
+clients while the host selects the new backend.

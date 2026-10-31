@@ -1,6 +1,13 @@
 {
   "libinfinistream": {
     "url": "https://github.com/gretchycat/libinfinistream.git",
-    "commit": "6fee467d62e95b1afb231b019dd69dd35364349d"
+    "commit": "e86167f2fd0c2c19d24140f05478099fdb1a693b"
+  },
+  "libvlc": {
+    "coordinate": "org.videolan.android:libvlc-all:3.7.7",
+    "source": "https://code.videolan.org/videolan/libvlcjni",
+    "license": "LGPL-2.1 (published metadata); Android source headers LGPL-2.1-or-later",
+    "aarSha256": "b48dab96e0e90e34cce3861963500c144a5aadb1b249d501d6a4b104d849e61b",
+    "sourceBuildOverride": "-PlibVlcAar=/absolute/path/to/source-built.aar"
   }
 }
