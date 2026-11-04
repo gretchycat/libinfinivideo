@@ -29,7 +29,13 @@ Android or libVLC types appear in these contracts. Output describes the actual
 presentation surface, dimensions/duration when known, backend and negotiated
 seekability. It does not advertise CPU frame bytes or positional frame access.
 
-`video-android` provides `LibVlcVideoBackend(context)`. Add its `view` to the host
+`video-android` provides `VideoCapabilities.create(context, metadata)`, which
+selects an installed `VideoCapabilityHandler` and returns `VideoSurfacePlayback`.
+Add its `view` and call `openFile(file, metadata, autoPlay)` or
+`openResource(resource, autoPlay)` directly. Declare the Android module dependency;
+discovery checks class/native availability rather than assuming libVLC exists.
+
+The explicit `LibVlcVideoBackend(context)` API remains compatible. Add its `view` to the host
 layout and call `open(file, sourceMetadata, autoPlay)` for local files or
 `open(resource, autoPlay)` for common sources. All presentation/control
 calls are on the Android main thread. The file is a borrowed local view of a
