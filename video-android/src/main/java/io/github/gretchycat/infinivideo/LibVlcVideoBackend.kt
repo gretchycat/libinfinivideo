@@ -17,16 +17,16 @@ import org.videolan.libvlc.util.VLCVideoLayout
 import java.io.File
 
 /** Main-thread Android presentation adapter. No libVLC types appear in VideoPlayback. */
-class LibVlcVideoBackend(context: Context) : VideoPlayback {
+class LibVlcVideoBackend(context: Context) : VideoSurfacePlayback {
     private val layout = VLCVideoLayout(context)
-    val view: View get() = layout
+    override val view: View get() = layout
     private val engine = LibVlcMedia.engine(context.applicationContext)
     private var player: MediaPlayer? = null
     private var stream: VideoStreamServer? = null
     private var lastBytesRead = 0L
     private var lastReplayedBytes = 0L
-    val streamBytesRead get() = stream?.bytesRead ?: lastBytesRead
-    val replayedBytes get() = stream?.replayedBytes ?: lastReplayedBytes
+    override val streamBytesRead get() = stream?.bytesRead ?: lastBytesRead
+    override val replayedBytes get() = stream?.replayedBytes ?: lastReplayedBytes
     private var closed = false
     private var ready = false
     private var ended = false
@@ -74,6 +74,9 @@ class LibVlcVideoBackend(context: Context) : VideoPlayback {
     override val isSeekable get() = player?.isSeekable == true
 
     /** Borrow a local view of a common source; stop/close before releasing its staging lease. */
+    override fun openFile(file:File,sourceMetadata:StreamMetadata,autoPlay:Boolean)=open(file,sourceMetadata,autoPlay)
+    override fun openResource(resource:SourceResource,autoPlay:Boolean)=open(resource,autoPlay)
+
     fun open(file: File, sourceMetadata: StreamMetadata = FileSourceResource(file).metadata, autoPlay: Boolean = true) {
         check(!closed) { "Video backend is closed" }
         stop()

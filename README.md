@@ -1,5 +1,7 @@
 # libinfinivideo
 
+Runtime discovery: [handler schema, registration, linked dependencies and limits](CAPABILITIES.md).
+
 Reusable video playback contracts and platform backends using libinfinistream.
 The Android app now selects **libVLC**, at the owner's request. The library owns
 its native player, video/subtitle surfaces, playback events and audio focus.
