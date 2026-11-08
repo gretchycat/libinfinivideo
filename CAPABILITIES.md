@@ -45,6 +45,10 @@ gradle :video-api:test :video-android:testDebugUnitTest :video-android:assembleD
 No browser process is required. Keep existing format regression suites; capability
 tests invoke actual services/parsers rather than scripted success responses.
 
+## New format modules
+
+New video handlers must use bounded signature or parser-backed content validation, then return real stream metadata when the backend exposes it. Identity detection must remain available when an optional playback backend is missing. Follow the shared [Stream conformance rule](../libinfinistream/CAPABILITIES.md#format-module-validation-and-metadata-requirements).
+
 ## Host audit record
 
 InfiniFolder's 2026-11-04 runtime-discovery audit exercises this repository through
