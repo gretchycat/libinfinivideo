@@ -1,17 +1,34 @@
 # libinfinivideo
 
+## Reproducible standalone build
+
+Install JDK 17 or 21, Python 3, Android SDK platform 36/build tools 35.0.0,
+and (for JNI modules) NDK 27.2.12479018/CMake 3.22.1. Set `ANDROID_HOME` or
+this checkout's untracked `local.properties`. The checked-in Gradle 9.7.1 wrapper
+is verified by its distribution SHA-256.
+
+```sh
+python3 scripts/fetch-dependencies.py
+./gradlew :video-api:test :video-android:testDebugUnitTest :video-android:assembleDebug
+```
+
+The lock includes only this library's required source dependencies, including
+transitive dependencies. Fetching checks pin agreement and refuses to overwrite
+local changes. `python3 scripts/fetch-dependencies.py --check` checks revisions.
+No application checkout is required. CI uses the same commands from a fresh clone.
+
+
 Runtime discovery: [handler schema, registration, linked dependencies and limits](CAPABILITIES.md).
 
 Reusable video playback contracts and platform backends using libinfinistream.
 The Android app now selects **libVLC**, at the owner's request. The library owns
 its native player, video/subtitle surfaces, playback events and audio focus.
-InfiniFolder owns controls, navigation, lifecycle decisions and source leases.
+Consuming applications own controls, navigation, lifecycle decisions and source leases.
 
 ## Build
 
 Use JDK 17+ and Gradle 9.7.1; Android requires SDK 36/min API 26.
-Clone sibling libinfinistream at the revision pinned by the containing workspace,
-or set `-PinfiniLibrariesDir=/path/to/libraries`.
+Run the dependency bootstrap above to fetch the pinned stream library.
 
 ```
 gradle :video-api:test :video-android:assembleDebug :video-android:testDebugUnitTest
