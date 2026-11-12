@@ -1,9 +1,17 @@
 package io.github.gretchycat.infinivideo
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.media.MediaDataSource
+import android.media.MediaMetadataRetriever
+import android.os.Build
 import android.view.View
 import io.github.gretchycat.infinistream.*
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.IOException
+import java.io.InterruptedIOException
+import java.util.concurrent.atomic.AtomicLong
 
 interface VideoSurfacePlayback : VideoPlayback {
     val view: View
@@ -38,7 +46,8 @@ private class VideoIdentityHandler : CapabilityHandler {
                 MagicSignature("1a45dfa3",description="EBML document header"),MagicSignature("52494646",description="RIFF container"),
                 MagicSignature("464c5601",description="Flash Video header"),MagicSignature("2e524d46",description="RealMedia file header"),
                 MagicSignature("000001b3",description="MPEG video sequence header"),MagicSignature("47",description="MPEG transport packet sync")))),
-        setOf(Operations.IDENTIFY),metadata=setOf("container"),limitations=listOf("Validates container headers only; codec and stream support are decided at playback"))
+        setOf(Operations.IDENTIFY),metadata=setOf("container"),limitations=listOf("Validates container headers only; codec and stream support are decided at playback"),
+        attributes=mapOf("presentation" to "video"))
 
     override fun probe(context:CapabilityProbeContext):HandlerProbe {
         if(context.resource.source==null)return super.probe(context)
@@ -151,16 +160,140 @@ private class VideoIdentityHandler : CapabilityHandler {
     }
 }
 
-private class LibVlcPlaybackHandler : VideoCapabilityHandler {
+private class LibVlcPlaybackHandler : VideoCapabilityHandler, MetadataCapabilityHandler {
     override val descriptor=HandlerDescriptor("video.libvlc","video","libVLC video",
         listOf(FormatSupport(setOf("video/*","application/vnd.rn-realmedia","application/vnd.rn-realmedia-vbr"),VideoFormats.extensions)),
-        setOf(Operations.PLAY,Operations.VIEW),metadata=setOf("duration","width","height","seekable"),
+        setOf(Operations.PLAY,Operations.VIEW,Operations.METADATA,Operations.THUMBNAIL),metadata=setOf("duration","width","height","rotation","title","artist","album","artworkAvailable","seekable"),
         limitations=listOf("libVLC native codecs and per-input demux support required; seeking depends on actual source/session"),attributes=mapOf("presentation" to "video"))
     override fun availability():HandlerAvailability {
         Class.forName("org.videolan.libvlc.LibVLC",true,javaClass.classLoader)
         return HandlerAvailability(AvailabilityState.CONDITIONAL,"Backend present; native initialization and input validation occur on open")
     }
     override fun create(context:Context):VideoSurfacePlayback=LibVlcVideoBackend(context)
+
+    override fun thumbnail(request: ThumbnailRequest): ThumbnailResult? {
+        if (Build.VERSION.SDK_INT < 27) return null
+        request.cancellation.check()
+        return withRetriever(request.resource, request.cancellation) { retriever ->
+            val artwork = retriever.embeddedPicture
+            if (artwork != null && artwork.size <= MAX_THUMBNAIL_BYTES) {
+                val image = ExtractedImage.ownedBytes(artwork, input = request.resource.metadata)
+                return@withRetriever ThumbnailResult.encoded(image.resource, image)
+            }
+            val width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: return@withRetriever null
+            val height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: return@withRetriever null
+            if (width <= 0 || height <= 0) return@withRetriever null
+            val rotation = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
+            val displayWidth = if (rotation % 180 == 0) width else height
+            val displayHeight = if (rotation % 180 == 0) height else width
+            val bound = request.targetPixels.coerceIn(1, MAX_THUMBNAIL_EDGE)
+            val scale = minOf(bound.toDouble() / displayWidth, bound.toDouble() / displayHeight, 1.0)
+            val targetWidth = (displayWidth * scale).toInt().coerceAtLeast(1)
+            val targetHeight = (displayHeight * scale).toInt().coerceAtLeast(1)
+            val bitmap = retriever.getScaledFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                targetWidth, targetHeight) ?: return@withRetriever null
+            try {
+                request.cancellation.check()
+                val output = ByteArrayOutputStream()
+                if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 85, output)) return@withRetriever null
+                val bytes = output.toByteArray()
+                if (bytes.size > MAX_THUMBNAIL_BYTES) return@withRetriever null
+                val image = ExtractedImage.ownedBytes(bytes, "image/jpeg", request.resource.metadata)
+                ThumbnailResult.encoded(image.resource, image)
+            } finally {
+                bitmap.recycle()
+            }
+        }
+    }
+
+    override fun extractMetadata(context: MetadataReadContext): MetadataRecord? =
+        withRetriever(context.resource, context.cancellation, context.maxBytes, context.maxReads, context.maxNanos) { retriever ->
+            fun value(key: Int): String? = retriever.extractMetadata(key)?.takeIf(String::isNotBlank)
+            val title = value(MediaMetadataRetriever.METADATA_KEY_TITLE)
+            val fields = buildMap {
+                value(MediaMetadataRetriever.METADATA_KEY_ARTIST)?.let { put("artist", it) }
+                value(MediaMetadataRetriever.METADATA_KEY_ALBUM)?.let { put("album", it) }
+                value(MediaMetadataRetriever.METADATA_KEY_DURATION)?.let { put("duration", it) }
+                value(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.let { put("width", it) }
+                value(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.let { put("height", it) }
+                value(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.let { put("rotation", it) }
+                retriever.embeddedPicture?.let { if (it.isNotEmpty()) put("artworkAvailable", "true") }
+                put("seekable", (context.resource.metadata.capabilities.contains(Capability.SEEK) ||
+                    context.resource.metadata.capabilities.contains(Capability.POSITIONAL_READ)).toString())
+            }
+            if (title == null && fields.isEmpty()) null
+            else MetadataRecord(descriptor.id,
+                context.resource.metadata.content.mimeType?.substringBefore(';')?.takeIf(String::isNotBlank) ?: "video/*",
+                title, fields)
+        }
+}
+
+private const val MAX_THUMBNAIL_EDGE = 2048
+private const val MAX_THUMBNAIL_BYTES = 8 * 1024 * 1024
+
+/** MediaMetadataRetriever's random-access adapter never spools the full input. */
+private fun <T> withRetriever(resource: CapabilityResource, cancellation: CancellationToken,
+    maxBytes: Long = 64L * 1024 * 1024, maxReads: Int = 512, maxNanos: Long = 2_000_000_000L,
+    action: (MediaMetadataRetriever) -> T?): T? {
+    val source = resource.source ?: return null
+    val input = source.open()
+    val dataSource = try { BoundedMediaDataSource(input, cancellation, maxBytes, maxReads, maxNanos) }
+    catch (error: Throwable) { input.close(); throw error }
+    var retriever: MediaMetadataRetriever? = null
+    try {
+        retriever = MediaMetadataRetriever()
+        retriever.setDataSource(dataSource)
+        cancellation.check()
+        return action(retriever).also { dataSource.checkBudget() }
+    } catch (error: InterruptedIOException) {
+        throw error
+    } catch (_: Exception) {
+        return null
+    } finally {
+        try { retriever?.release() } finally { dataSource.close() }
+    }
+}
+
+private class BoundedMediaDataSource(
+    private val input: ByteSource,
+    private val cancellation: CancellationToken,
+    private val maxBytes: Long,
+    private val maxReads: Int,
+    private val maxNanos: Long
+) : MediaDataSource() {
+    private val positional = input as? PositionalReadable ?: throw IOException("Media preview requires random-access input")
+    private val length = input.metadata.length ?: throw IOException("Media preview requires a known source length")
+    private val started = System.nanoTime()
+    private val bytesRead = AtomicLong()
+    private val reads = java.util.concurrent.atomic.AtomicInteger()
+    @Volatile private var closed = false
+
+    override fun getSize(): Long = if (closed) throw IOException("Media preview source is closed") else length
+
+    override fun readAt(position: Long, buffer: ByteArray, offset: Int, size: Int): Int {
+        if (closed) throw IOException("Media preview source is closed")
+        if (position < 0 || offset < 0 || size < 0 || offset > buffer.size - size) throw IOException("Invalid media preview read")
+        checkBudget()
+        if (reads.incrementAndGet() > maxReads || size.toLong() > maxBytes - bytesRead.get())
+            throw IOException("Media preview read budget exceeded")
+        val count = positional.readAt(position, buffer, offset, size)
+        if (count > 0) bytesRead.addAndGet(count.toLong())
+        checkBudget()
+        return count
+    }
+
+    fun checkBudget() {
+        cancellation.check()
+        if (System.nanoTime() - started > maxNanos || bytesRead.get() > maxBytes || reads.get() > maxReads)
+            throw InterruptedIOException("Media preview read budget exceeded")
+    }
+
+    @Synchronized override fun close() {
+        if (!closed) {
+            closed = true
+            input.close()
+        }
+    }
 }
 object VideoFormats {
     val extensions=setOf("mp4","mkv","webm","avi","mov","3gp","3gpp","3g2","ts","m2ts","ogv","wmv","flv","m4v","rm","rmvb")
